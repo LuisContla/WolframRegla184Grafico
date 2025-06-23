@@ -11,14 +11,15 @@ function WolframGraphic() {
         </div>
         <div className="simulacion">
           <div className="canvas">
-            <canvas id="gameCanvas1" />
-            <canvas id="gameCanvas2" />
+            <canvas id="gameCanvas" />
             <br /><br />
           </div>
         </div>
         <div className="botones">
           <button id="startButton">Iniciar</button>
           <button id="resetButton">Reiniciar</button>
+          <button id="toggleCyclic">Modo Cíclico: OFF</button>
+          <button id="toggleContinuous">Tráfico Continuo: OFF</button>
         </div>
         <div className="control-de-celulas">
           <label>Densidad:</label>
