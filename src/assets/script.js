@@ -5,6 +5,10 @@ window.onload = function () {
     aliveImage1.src = "./Media/CarEast.png";
     const aliveImage2 = new Image();
     aliveImage2.src = "./Media/CarWest.png";
+    const damagedImage1 = new Image();
+    damagedImage1.src = "./Media/CarEastBroken.png";
+    const damagedImage2 = new Image();
+    damagedImage2.src = "./Media/CarWestBroken.png";
 
     let rows = 10, cols = 50;
     let cellSize = 30;
@@ -12,8 +16,8 @@ window.onload = function () {
     canvas.height = rows * cellSize;
 
     // Cambia estos valores para elegir las filas de los carriles
-    let rowRight = 3; // Fila que avanza a la derecha (de izquierda a derecha)
-    let rowLeft = 6;  // Fila que avanza a la izquierda (de derecha a izquierda)
+    let rowRight = 4; // Fila que avanza a la derecha (de izquierda a derecha)
+    let rowLeft = 5;  // Fila que avanza a la izquierda (de derecha a izquierda)
 
     let grid = Array.from({ length: rows }, () => Array(cols).fill(0));
     let transferFlash = [];
@@ -29,6 +33,10 @@ window.onload = function () {
     const minSpeed = 250;
     const maxSpeed = 1000;
     const speedStep = 250;
+
+    let breakdownProbability = 0.01;
+    let repairProbability = 0.5;
+    let laneChangeProbability = 0.1;
 
     function drawGrid() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -47,10 +55,20 @@ window.onload = function () {
                 }
                 ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
 
-                if (y === rowRight && grid[y][x] === 1) {
-                    ctx.drawImage(aliveImage1, x * cellSize, y * cellSize, cellSize, cellSize);
-                } else if (y === rowLeft && grid[y][x] === 1) {
-                    ctx.drawImage(aliveImage2, x * cellSize, y * cellSize, cellSize, cellSize);
+                // Dibuja el carro funcional o averiado
+                const cell = grid[y][x];
+                if (y === rowRight) {
+                    if (cell === 1) {
+                        ctx.drawImage(aliveImage1, x * cellSize, y * cellSize, cellSize, cellSize);
+                    } else if (typeof cell === "object" && cell.state === "damaged") {
+                        ctx.drawImage(damagedImage1, x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
+                } else if (y === rowLeft) {
+                    if (cell === 1) {
+                        ctx.drawImage(aliveImage2, x * cellSize, y * cellSize, cellSize, cellSize);
+                    } else if (typeof cell === "object" && cell.state === "damaged") {
+                        ctx.drawImage(damagedImage2, x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
                 }
 
                 ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
@@ -60,39 +78,111 @@ window.onload = function () {
 
     function applyRule184(prevRow, skipIndices = []) {
         const nextRow = new Array(cols).fill(0);
-        for (let i = 0; i < cols; i++) {
-            if (skipIndices.includes(i)) continue;
-            const left = prevRow[(i - 1 + cols) % cols];
-            const center = prevRow[i];
-            const right = prevRow[(i + 1) % cols];
+        const processed = new Array(cols).fill(false);
 
-            if (center === 1 && right === 0) {
-                nextRow[(i + 1) % cols] = 1;
-            } else if (center === 1 && right === 1) {
+        for (let i = cols - 1; i >= 0; i--) {
+            if (skipIndices.includes(i) || processed[i]) {
+                nextRow[i] = prevRow[i];
+                continue;
+            }
+
+            const center = prevRow[i];
+            const rightIdx = (i + 1) % cols;
+            const right = prevRow[rightIdx];
+
+            // Si ya era averiado
+            if (typeof center === "object" && center.state === "damaged") {
+                const newTimer = center.timer - 1;
+                nextRow[i] = newTimer > 0
+                    ? { state: "damaged", timer: newTimer }
+                    : (Math.random() < repairProbability ? 1 : 0);
+                processed[i] = true;
+                continue;
+            }
+
+            // Si es funcional, primero determinamos si se avería
+            if (center === 1 && Math.random() < breakdownProbability) {
+                nextRow[i] = { state: "damaged", timer: 20 };
+                processed[i] = true;
+                continue; // No avanza si se avería
+            }
+
+            // Avanza solo si la celda destino está vacía y no ha sido procesada
+            if (
+                center === 1 &&
+                right === 0 &&
+                nextRow[rightIdx] === 0 &&
+                !processed[rightIdx]
+            ) {
+                nextRow[rightIdx] = 1;
+                processed[rightIdx] = true;
+            } else if (
+                center === 1 &&
+                (typeof right === "object" && right.state === "damaged")
+            ) {
                 nextRow[i] = 1;
-            } else if (center === 0 && left === 1) {
+                processed[i] = true;
+            } else if (center === 1) {
                 nextRow[i] = 1;
+                processed[i] = true;
             }
         }
+
         return nextRow;
     }
 
     function applyRule184Reversed(prevRow, skipIndices = []) {
         const nextRow = new Array(cols).fill(0);
-        for (let i = cols - 1; i >= 0; i--) {
-            if (skipIndices.includes(i)) continue;
-            const right = prevRow[(i - 1 + cols) % cols];
-            const center = prevRow[i];
-            const left = prevRow[(i + 1) % cols];
+        const processed = new Array(cols).fill(false);
 
-            if (center === 1 && right === 0) {
-                nextRow[(i - 1 + cols) % cols] = 1;
-            } else if (center === 1 && right === 1) {
+        for (let i = 0; i < cols; i++) {
+            if (skipIndices.includes(i) || processed[i]) {
+                nextRow[i] = prevRow[i];
+                continue;
+            }
+
+            const center = prevRow[i];
+            const leftIdx = (i - 1 + cols) % cols;
+            const left = prevRow[leftIdx];
+
+            // Si ya era averiado
+            if (typeof center === "object" && center.state === "damaged") {
+                const newTimer = center.timer - 1;
+                nextRow[i] = newTimer > 0
+                    ? { state: "damaged", timer: newTimer }
+                    : (Math.random() < repairProbability ? 1 : 0);
+                processed[i] = true;
+                continue;
+            }
+
+            // Si es funcional, primero determinamos si se avería
+            if (center === 1 && Math.random() < breakdownProbability) {
+                nextRow[i] = { state: "damaged", timer: 20 };
+                processed[i] = true;
+                continue; // No avanza si se avería
+            }
+
+            // Avanza solo si la celda destino está vacía y no ha sido procesada
+            if (
+                center === 1 &&
+                left === 0 &&
+                nextRow[leftIdx] === 0 &&
+                !processed[leftIdx]
+            ) {
+                nextRow[leftIdx] = 1;
+                processed[leftIdx] = true;
+            } else if (
+                center === 1 &&
+                (typeof left === "object" && left.state === "damaged")
+            ) {
                 nextRow[i] = 1;
-            } else if (center === 0 && left === 1) {
+                processed[i] = true;
+            } else if (center === 1) {
                 nextRow[i] = 1;
+                processed[i] = true;
             }
         }
+
         return nextRow;
     }
 
@@ -107,69 +197,75 @@ window.onload = function () {
         }
     }
 
-    function handleTransfer(grid, rowRight, rowLeft, cols, cyclicMode) {
-        let flashes = [];
-        let skipRight = [];
-        let skipLeft = [];
-        let newGrid = grid.map(row => [...row]);
-
-        if (cyclicMode) {
-            // De rowRight (derecha) a rowLeft (izquierda)
-            if (
-                grid[rowRight][cols - 1] === 1 &&
-                grid[rowLeft][cols - 1] === 0
-            ) {
-                newGrid[rowRight][cols - 1] = 0;
-                newGrid[rowLeft][cols - 1] = 1;
-                flashes.push({ row: rowLeft, col: cols - 1 });
-            }
-            // De rowLeft (izquierda) a rowRight (derecha)
-            if (
-                grid[rowLeft][0] === 1 &&
-                grid[rowRight][0] === 0
-            ) {
-                newGrid[rowLeft][0] = 0;
-                newGrid[rowRight][0] = 1;
-                flashes.push({ row: rowRight, col: 0 });
-            }
-        }
-
-        return { newGrid, skipRight, skipLeft, flashes };
-    }
-
     function stepSimulation() {
         let newGrid = grid.map(row => [...row]);
         let flashes = [];
         let skipRight = [];
         let skipLeft = [];
 
-        if (cyclicMode) {
-            // Transferencia de rowLeft (6,0) a rowRight (3,0) SOLO si 3,0 y 3,1 están vacías (regla 184)
-            if (
-                grid[rowLeft][0] === 1 &&
-                grid[rowRight][0] === 0
-            ) {
-                newGrid[rowLeft][0] = 0;
-                newGrid[rowRight][0] = 1;
-                skipLeft.push(0); // Nadie puede avanzar a 6,0 este turno
-                flashes.push({ row: rowRight, col: 0 });
+        // --- PROCESO DE AVERÍA Y CAMBIO DE CARRIL ---
+        // Copias para saber si ya se cambió de carril en este paso
+        let tempRowRight = [...newGrid[rowRight]];
+        let tempRowLeft = [...newGrid[rowLeft]];
+        let nextRowRight = Array(cols).fill(0);
+        let nextRowLeft = Array(cols).fill(0);
+
+        // Primero: avería y cambio de carril para ambos carriles
+        for (let i = 0; i < cols; i++) {
+            // --- Carril superior (derecha) ---
+            if (tempRowRight[i] === 1) {
+                // 1. Avería
+                if (Math.random() < breakdownProbability) {
+                    nextRowRight[i] = { state: "damaged", timer: 20 };
+                    continue;
+                }
+                // 2. Cambio de carril (solo si celda de abajo está libre)
+                if (
+                    Math.random() < laneChangeProbability &&
+                    tempRowLeft[i] === 0 &&
+                    nextRowLeft[i] === 0
+                ) {
+                    nextRowLeft[i] = 1;
+                    continue;
+                }
+                // 3. Si no cambia de carril ni se avería, queda para avanzar
+                nextRowRight[i] = 1;
+            } else if (typeof tempRowRight[i] === "object" && tempRowRight[i].state === "damaged") {
+                // Mantén los averiados para el procesamiento de timer
+                nextRowRight[i] = tempRowRight[i];
             }
-            // Transferencia de rowRight (3,cols-1) a rowLeft (6,cols-1) SOLO si 6,cols-1 y 6,cols-2 están vacías (regla 184 reversa)
-            if (
-                grid[rowRight][cols - 1] === 1 &&
-                grid[rowLeft][cols - 1] === 0
-            ) {
-                newGrid[rowRight][cols - 1] = 0;
-                newGrid[rowLeft][cols - 1] = 1;
-                skipRight.push(cols - 1); // Nadie puede avanzar a 3,cols-1 este turno
-                flashes.push({ row: rowLeft, col: cols - 1 });
+
+            // --- Carril inferior (izquierda) ---
+            if (tempRowLeft[i] === 1) {
+                // 1. Avería
+                if (Math.random() < breakdownProbability) {
+                    nextRowLeft[i] = { state: "damaged", timer: 20 };
+                    continue;
+                }
+                // 2. Cambio de carril (solo si celda de arriba está libre)
+                if (
+                    Math.random() < laneChangeProbability &&
+                    tempRowRight[i] === 0 &&
+                    nextRowRight[i] === 0
+                ) {
+                    nextRowRight[i] = 1;
+                    continue;
+                }
+                // 3. Si no cambia de carril ni se avería, queda para avanzar
+                nextRowLeft[i] = 1;
+            } else if (typeof tempRowLeft[i] === "object" && tempRowLeft[i].state === "damaged") {
+                // Mantén los averiados para el procesamiento de timer
+                nextRowLeft[i] = tempRowLeft[i];
             }
         }
 
-        // Aplica la regla 184 normal a ambos carriles, saltando las celdas de transferencia
-        newGrid[rowRight] = applyRule184(newGrid[rowRight], skipRight);
-        newGrid[rowLeft] = applyRule184Reversed(newGrid[rowLeft], skipLeft);
+        // Ahora nextRowRight y nextRowLeft tienen los carros listos para avanzar (o averiados)
+        // Aplica la regla 184 solo a los carros funcionales (1), saltando los averiados y los que cambiaron de carril
+        newGrid[rowRight] = applyRule184(nextRowRight, skipRight);
+        newGrid[rowLeft] = applyRule184Reversed(nextRowLeft, skipLeft);
 
+        // --- El resto de tu función stepSimulation sigue igual ---
+        // Tráfico continuo después del avance
         if (continuousTraffic) {
             if (Math.random() < density && newGrid[rowRight][0] === 0) {
                 newGrid[rowRight][0] = 1;
@@ -202,10 +298,12 @@ window.onload = function () {
         if (!running) {
             running = true;
             startButton.textContent = "Pausar";
+            setProbabilityInputsEnabled(false); // Deshabilita los inputs
             interval = setInterval(stepSimulation, speed);
         } else {
             running = false;
             startButton.textContent = "Iniciar";
+            setProbabilityInputsEnabled(true); // Habilita los inputs
             clearInterval(interval);
         }
     }
@@ -219,6 +317,8 @@ window.onload = function () {
         document.getElementById("startButton").textContent = "Iniciar";
         document.getElementById("toggleCyclic").textContent = "Modo Cíclico: OFF";
         document.getElementById("toggleContinuous").textContent = "Tráfico Continuo: OFF";
+        setProbabilityInputsEnabled(true);
+        drawGrid();
     }
 
     function setupCanvasInteraction() {
@@ -230,10 +330,16 @@ window.onload = function () {
             const { x, y } = getCellFromEvent(canvas, event);
             if (y !== rowRight && y !== rowLeft) return; // Solo carriles
             if (running) toggleGame();
-            isDrawing = true;
-            drawRow = y;
-            drawState = grid[y][x] === 1 ? 0 : 1;
-            grid[y][x] = drawState;
+
+            // Cicla los estados: vacío -> funcional -> averiado -> vacío ...
+            const cell = grid[y][x];
+            if (cell === 0) {
+                grid[y][x] = 1; // Funcional
+            } else if (cell === 1) {
+                grid[y][x] = { state: "damaged", timer: 20 }; // Averiado
+            } else if (typeof cell === "object" && cell.state === "damaged") {
+                grid[y][x] = 0; // Vacío
+            }
             drawGrid();
         });
 
@@ -241,10 +347,12 @@ window.onload = function () {
             if (!isDrawing) return;
             const { x, y } = getCellFromEvent(canvas, event);
             if (y !== drawRow) return;
-            if (grid[y][x] !== drawState) {
+            if (event.shiftKey) {
+                grid[y][x] = { state: "damaged", timer: 20 };
+            } else if (grid[y][x] !== drawState) {
                 grid[y][x] = drawState;
-                drawGrid();
             }
+            drawGrid();
         });
 
         canvas.addEventListener("mouseup", () => { isDrawing = false; });
@@ -259,6 +367,22 @@ window.onload = function () {
     }
 
     document.getElementById("startButton").addEventListener("click", () => toggleGame());
+
+    function setProbabilityInputsEnabled(enabled) {
+        document.getElementById("breakdownInput").disabled = !enabled;
+        document.getElementById("repairInput").disabled = !enabled;
+        document.getElementById("laneChangeInput").disabled = !enabled;
+    }
+
+    document.getElementById("breakdownInput").addEventListener("input", function () {
+        breakdownProbability = parseFloat(this.value);
+    });
+    document.getElementById("repairInput").addEventListener("input", function () {
+        repairProbability = parseFloat(this.value);
+    });
+    document.getElementById("laneChangeInput").addEventListener("input", function () {
+        laneChangeProbability = parseFloat(this.value);
+    });
 
     document.getElementById("resetButton").onclick = () => {
         running = false;

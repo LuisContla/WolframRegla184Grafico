@@ -30,6 +30,20 @@ function WolframGraphic() {
           <button id="increaseDensity10">++</button>
           <button id="randomButton">Aleatorio</button>
         </div>
+        <div className="probabilidades">
+          <label>
+            Probabilidad de avería:
+            <input id="breakdownInput" type="number" min="0" max="1" step="0.01" defaultValue="0.01" />
+          </label>
+          <label style={{ marginLeft: "1em" }}>
+            Probabilidad de reparación:
+            <input id="repairInput" type="number" min="0" max="1" step="0.01" defaultValue="0.5" />
+          </label>
+          <label style={{ marginLeft: "1em" }}>
+            Probabilidad de cambio de carril:
+            <input id="laneChangeInput" type="number" min="0" max="1" step="0.01" defaultValue="0.1" />
+          </label>
+        </div>
         <div className="velocidad">
           <label>Velocidad (ms):</label>
           <button id="increaseSpeed">-</button>
